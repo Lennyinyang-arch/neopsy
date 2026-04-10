@@ -204,6 +204,8 @@
 </main>
 <script>
   let fileContent = '';
+  let fileBase64 = '';
+  let fileIsPdf = false;
   let selectedFile = null;
   const fileInput = document.getElementById('fileInput');
   const uploadZone = document.getElementById('uploadZone');
@@ -231,9 +233,15 @@
     fileSize.textContent = formatSize(file.size);
     fileSelected.classList.add('visible');
     btnAnalyze.disabled = false;
+    fileIsPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const reader = new FileReader();
-    reader.onload = e => { fileContent = e.target.result; };
-    reader.readAsText(file);
+    if (fileIsPdf) {
+      reader.onload = e => { fileBase64 = e.target.result.split(',')[1]; fileContent = ''; };
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = e => { fileContent = e.target.result; fileBase64 = ''; };
+      reader.readAsText(file);
+    }
   }
 
   function formatSize(bytes) {
@@ -243,7 +251,7 @@
   }
 
   btnRemove.addEventListener('click', () => {
-    selectedFile = null; fileContent = ''; fileInput.value = '';
+    selectedFile = null; fileContent = ''; fileBase64 = ''; fileIsPdf = false; fileInput.value = '';
     fileSelected.classList.remove('visible'); btnAnalyze.disabled = true;
   });
 
@@ -296,10 +304,26 @@ Génère un rapport structuré avec les sections suivantes (utilise des balises 
 Sois précis, clinique, professionnel. Utilise la terminologie psychiatrique appropriée.`;
 
     try {
+      let messages;
+      if (fileIsPdf && fileBase64) {
+        messages = [{
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: fileBase64 }
+            },
+            { type: 'text', text: prompt }
+          ]
+        }];
+      } else {
+        messages = [{ role: 'user', content: prompt }];
+      }
+
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
+        body: JSON.stringify({ messages })
       });
 
       const data = await response.json();
